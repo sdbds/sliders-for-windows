@@ -18,6 +18,7 @@ UNET_TARGET_REPLACE_MODULE_TRANSFORMER = [
     "HunYuanDiTBlock",
     "DoubleStreamBlock",
     "SingleStreamBlock",
+    "ZImageTransformerBlock",
 ]
 UNET_TARGET_REPLACE_MODULE_CONV = [
     "ResnetBlock2D",

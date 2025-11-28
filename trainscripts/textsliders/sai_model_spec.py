@@ -64,6 +64,9 @@ ARCH_FLUX_1_UNKNOWN = "flux-1"
 ARCH_HYDIT_V1_1 = "hunyuan-dit-g2-v1_1"
 ARCH_HYDIT_V1_2 = "hunyuan-dit-g2-v1_2"
 
+ARCH_ZIMAGE_TURBO = "z-image-turbo"
+ARCH_ZIMAGE_UNKNOWN = "z-image"
+
 ADAPTER_LORA = "sliders"
 
 IMPL_STABILITY_AI = "https://github.com/Stability-AI/generative-models"
@@ -71,6 +74,7 @@ IMPL_COMFY_UI = "https://github.com/comfyanonymous/ComfyUI"
 IMPL_DIFFUSERS = "diffusers"
 IMPL_HUNYUAN_DIT = "https://github.com/Tencent/HunyuanDiT"
 IMPL_FLUX = "https://github.com/black-forest-labs/flux"
+IMPL_ZIMAGE = "https://github.com/JerryWu-code/diffusers"
 
 PRED_TYPE_EPSILON = "epsilon"
 PRED_TYPE_V = "v"
@@ -93,6 +97,7 @@ def build_metadata(
     sd3: Optional[str] = None,
     hydit: Optional[str] = None,
     flux: Optional[str] = None,
+    zimage: Optional[str] = None,
 ):
     """
     sd3: only supports "m", flux: only supports "dev"
@@ -118,6 +123,13 @@ def build_metadata(
             arch = ARCH_FLUX_1_DEV
         else:
             arch = ARCH_FLUX_1_UNKNOWN
+    elif zimage is not None:
+        metadata["ss_base_model_version"] = "zimage"
+        del metadata["ss_v2"]
+        if zimage == "turbo":
+            arch = ARCH_ZIMAGE_TURBO
+        else:
+            arch = ARCH_ZIMAGE_UNKNOWN
     elif hydit:
         metadata["ss_base_model_version"] = "hydit"
         del metadata["ss_v2"]
@@ -147,6 +159,9 @@ def build_metadata(
     elif flux:
         # Flux
         impl = IMPL_FLUX
+    elif zimage:
+        # Z-Image
+        impl = IMPL_ZIMAGE
     elif hydit:
         impl = IMPL_HUNYUAN_DIT
     else:
@@ -199,7 +214,7 @@ def build_metadata(
             reso = (reso[0], reso[0])
     else:
         # resolution is defined in dataset, so use default
-        if sdxl or sd3 is not None or flux is not None:
+        if sdxl or sd3 is not None or flux is not None or zimage is not None:
             reso = 1024
         elif v2 and v_parameterization:
             reso = 768
@@ -210,7 +225,7 @@ def build_metadata(
 
     metadata["modelspec.resolution"] = f"{reso[0]}x{reso[1]}"
 
-    if flux is not None:
+    if flux is not None or zimage is not None:
         del metadata["modelspec.prediction_type"]
     elif v_parameterization:
         metadata["modelspec.prediction_type"] = PRED_TYPE_V

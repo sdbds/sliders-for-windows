@@ -21,17 +21,22 @@ UNET_PROJECTION_CLASS_EMBEDDING_INPUT_DIM = 2816
 
 
 def get_random_noise(
-    batch_size: int, height: int, width: int, device: torch.device, generator: torch.Generator = None
+    batch_size: int,
+    height: int,
+    width: int,
+    device: torch.device,
+    generator: torch.Generator = None,
 ) -> torch.Tensor:
     return torch.randn(
         (
             batch_size,
             UNET_IN_CHANNELS,
-            height // VAE_SCALE_FACTOR,  # 縦と横これであってるのかわからないけど、どっちにしろ大きな問題は発生しないのでこれでいいや
+            height
+            // VAE_SCALE_FACTOR,  # 縦と横これであってるのかわからないけど、どっちにしろ大きな問題は発生しないのでこれでいいや
             width // VAE_SCALE_FACTOR,
         ),
         device=device,
-        generator=generator
+        generator=generator,
     )
 
 
@@ -50,7 +55,7 @@ def get_initial_latents(
     width: int,
     n_prompts: int,
     device: torch.device,
-    generator=None
+    generator=None,
 ) -> torch.Tensor:
     noise = get_random_noise(n_imgs, height, width, device, generator=generator).repeat(
         n_prompts, 1, 1, 1
@@ -83,11 +88,8 @@ def encode_prompts(
     text_encoder: CLIPTokenizer,
     prompts: list[str],
 ):
-
     text_tokens = text_tokenize(tokenizer, prompts)
     text_embeddings = text_encode(text_encoder, text_tokens)
-    
-    
 
     return text_embeddings
 
@@ -175,7 +177,6 @@ def predict_noise(
     return guided_target
 
 
-
 # ref: https://github.com/huggingface/diffusers/blob/0bab447670f47c28df60fbd2f6a0f833f75a16f5/src/diffusers/pipelines/stable_diffusion/pipeline_stable_diffusion.py#L746
 @torch.no_grad()
 def diffusion(
@@ -200,6 +201,7 @@ def diffusion(
     # return latents_steps
     return latents
 
+
 @torch.no_grad()
 def get_noisy_image(
     img,
@@ -209,7 +211,6 @@ def get_noisy_image(
     scheduler: SchedulerMixin,
     total_timesteps: int = 1000,
     start_timesteps=0,
-    
     **kwargs,
 ):
     # latents_steps = []
@@ -234,10 +235,10 @@ def get_noisy_image(
     noise = randn_tensor(shape, generator=generator, device=device)
 
     time_ = total_timesteps
-    timestep = scheduler.timesteps[time_:time_+1]
+    timestep = scheduler.timesteps[time_ : time_ + 1]
     # get latents
     init_latents = scheduler.add_noise(init_latents, noise, timestep)
-    
+
     return init_latents, noise
 
 
@@ -297,11 +298,11 @@ def predict_noise_xl(
         noise_pred_text - noise_pred_uncond
     )
 
-    if guidance_rescale > 0.0:
-        # https://github.com/huggingface/diffusers/blob/7a91ea6c2b53f94da930a61ed571364022b21044/src/diffusers/pipelines/stable_diffusion_xl/pipeline_stable_diffusion_xl.py#L775
-        guided_target = rescale_noise_cfg(
-            guided_target, noise_pred_text, guidance_rescale=guidance_rescale
-        )
+    # if guidance_rescale > 0.0:
+    #     # https://github.com/huggingface/diffusers/blob/7a91ea6c2b53f94da930a61ed571364022b21044/src/diffusers/pipelines/stable_diffusion_xl/pipeline_stable_diffusion_xl.py#L775
+    #     guided_target = rescale_noise_cfg(
+    #         guided_target, noise_pred_text, guidance_rescale=guidance_rescale
+    #     )
 
     return guided_target
 
@@ -399,8 +400,12 @@ def get_optimizer(name: str):
             return bnb.optim.Adam8bit
         elif name == "lion8bit":
             return bnb.optim.Lion8bit
+        elif name == "ademamix8bit":
+            return bnb.optim.AdEMAMix8bit
         else:
-            raise ValueError("8bit optimizer must be adam8bit or lion8bit")
+            raise ValueError(
+                "8bit optimizer must be adam8bit or lion8bit or ademamix8bit"
+            )
 
     else:
         if name == "adam":
@@ -413,7 +418,7 @@ def get_optimizer(name: str):
             return Lion
         elif name == "prodigy":
             import prodigyopt
-            
+
             return prodigyopt.Prodigy
         else:
             raise ValueError("Optimizer must be adam, adamw, lion or Prodigy")
@@ -459,19 +464,26 @@ def get_random_resolution_in_bucket(bucket_resolution: int = 512) -> tuple[int, 
     min_step = min_resolution // step
     max_step = max_resolution // step
 
-    height = torch.randint(min_step, max_step, (1,)).item() * step
-    width = torch.randint(min_step, max_step, (1,)).item() * step
+    # +1 to include max_resolution (randint upper bound is exclusive)
+    height = torch.randint(min_step, max_step + 1, (1,)).item() * step
+    width = torch.randint(min_step, max_step + 1, (1,)).item() * step
 
     return height, width
 
-def bucket_resolution(bucket_resolution: int, img_resolution: tuple[int, int], multiple: int = 64) -> tuple[int, int]:
+
+def bucket_resolution(
+    bucket_resolution: int, img_resolution: tuple[int, int], multiple: int = 64
+) -> tuple[int, int]:
     max_resolution = int(bucket_resolution * 1.5)
     min_resolution = bucket_resolution // 2
 
     img_width, img_height = img_resolution
 
     # 检查图片分辨率是否在分桶范围内
-    if min_resolution <= img_height <= max_resolution and min_resolution <= img_width <= max_resolution:
+    if (
+        min_resolution <= img_height <= max_resolution
+        and min_resolution <= img_width <= max_resolution
+    ):
         return img_height, img_width
 
     # 计算等比例缩放后的分辨率
@@ -490,17 +502,18 @@ def bucket_resolution(bucket_resolution: int, img_resolution: tuple[int, int], m
 
     return new_height, new_width
 
+
 def align_images(img1, img2, width, height):
     # 调整图像大小
-    img2_resized = img2.resize((width, height),resample=Image.LANCZOS)
-    img1_resized = img1.resize(img2.size, Image.LANCZOS)
- 
+    img2_resized = img2.resize((width, height), resample=Image.LANCZOS)
+    img1_resized = img1.resize((width, height), Image.LANCZOS)
+
     # 转换为OpenCV格式
     img1_cv = cv2.cvtColor(np.array(img1_resized), cv2.COLOR_RGB2GRAY)
     img2_cv = cv2.cvtColor(np.array(img2_resized), cv2.COLOR_RGB2GRAY)
 
     # 使用ORB特征检测器
-    orb = cv2.ORB_create(nfeatures=300,scoreType=cv2.ORB_FAST_SCORE)
+    orb = cv2.ORB_create(nfeatures=300, scoreType=cv2.ORB_FAST_SCORE)
     keypoints1, descriptors1 = orb.detectAndCompute(img1_cv, None)
     keypoints2, descriptors2 = orb.detectAndCompute(img2_cv, None)
 
@@ -510,11 +523,15 @@ def align_images(img1, img2, width, height):
     matches = sorted(matches, key=lambda x: x.distance)
 
     # 选取好的匹配点
-    good_matches = matches[:min(len(matches), 50)]
+    good_matches = matches[: min(len(matches), 50)]
 
     # 获取匹配点的坐标
-    src_pts = np.float32([keypoints1[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
-    dst_pts = np.float32([keypoints2[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+    src_pts = np.float32([keypoints1[m.queryIdx].pt for m in good_matches]).reshape(
+        -1, 1, 2
+    )
+    dst_pts = np.float32([keypoints2[m.trainIdx].pt for m in good_matches]).reshape(
+        -1, 1, 2
+    )
 
     # 计算变换矩阵
     M, _ = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)

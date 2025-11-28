@@ -17,7 +17,9 @@ class PretrainedModelConfig(BaseModel):
     v_pred: bool = False
 
     clip_skip: Optional[int] = None
-    hydit: str = "1.2"
+    hydit: Optional[str] = None  # "1.1" or "1.2"
+    flux: Optional[str] = None   # "dev" or "schnell"
+    zimage: Optional[str] = None # "turbo" or other variants
 
 
 class NetworkConfig(BaseModel):
@@ -39,6 +41,7 @@ class TrainConfig(BaseModel):
     lr_scheduler: str = "constant"
 
     max_denoising_steps: int = 50
+    max_sequence_length: int = 2048  # For Z-Image/Flux text encoder
 
 
 class SaveConfig(BaseModel):
@@ -54,9 +57,14 @@ class LoggingConfig(BaseModel):
     verbose: bool = False
 
 
+COMPILE_MODES = Literal["default", "reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs"]
+
+
 class OtherConfig(BaseModel):
     use_xformers: bool = False
     gradient_checkpointing: bool = False
+    torch_compile: bool = False
+    torch_compile_mode: COMPILE_MODES = "max-autotune-no-cudagraphs"
 
 
 class RootConfig(BaseModel):

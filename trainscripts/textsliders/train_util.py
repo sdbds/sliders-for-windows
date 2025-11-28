@@ -588,8 +588,10 @@ def get_optimizer(name: str):
             return bnb.optim.Adam8bit
         elif name == "lion8bit":
             return bnb.optim.Lion8bit
+        elif name == "ademamix8bit":
+            return bnb.optim.AdEMAMix8bit
         else:
-            raise ValueError("8bit optimizer must be adam8bit or lion8bit")
+            raise ValueError("8bit optimizer must be adam8bit or lion8bit or ademamix8bit")
 
     else:
         if name == "adam":
@@ -648,7 +650,230 @@ def get_random_resolution_in_bucket(bucket_resolution: int = 512) -> tuple[int, 
     min_step = min_resolution // step
     max_step = max_resolution // step
 
-    height = torch.randint(min_step, max_step, (1,)).item() * step
-    width = torch.randint(min_step, max_step, (1,)).item() * step
+    # +1 to include max_resolution (randint upper bound is exclusive)
+    height = torch.randint(min_step, max_step + 1, (1,)).item() * step
+    width = torch.randint(min_step, max_step + 1, (1,)).item() * step
 
     return height, width
+
+
+# ==================== Z-Image Functions ====================
+
+ZIMAGE_VAE_SCALE_FACTOR = 16  # vae_scale_factor * 2 for Z-Image
+ZIMAGE_IN_CHANNELS = 16  # Z-Image transformer in_channels
+
+
+def get_random_noise_zimage(
+    batch_size: int,
+    height: int,
+    width: int,
+    device: torch.device,
+    generator: torch.Generator = None,
+) -> torch.Tensor:
+    """Get random noise for Z-Image latent space."""
+    return torch.randn(
+        (
+            batch_size,
+            ZIMAGE_IN_CHANNELS,
+            height // ZIMAGE_VAE_SCALE_FACTOR,
+            width // ZIMAGE_VAE_SCALE_FACTOR,
+        ),
+        device=device,
+        generator=generator,
+        dtype=torch.float32,  # Z-Image uses float32 for latents
+    )
+
+
+def get_initial_latents_zimage(
+    n_imgs: int,
+    height: int,
+    width: int,
+    n_prompts: int,
+    device: torch.device,
+    generator=None,
+) -> torch.Tensor:
+    """Get initial latents for Z-Image (no scheduler scaling needed for flow matching)."""
+    noise = get_random_noise_zimage(n_imgs, height, width, device, generator=generator)
+    latents = noise.repeat(n_prompts, 1, 1, 1)
+    return latents
+
+
+def calculate_shift_zimage(
+    image_seq_len: int,
+    base_seq_len: int = 256,
+    max_seq_len: int = 4096,
+    base_shift: float = 0.5,
+    max_shift: float = 1.15,
+) -> float:
+    """Calculate shift value for Z-Image timestep scheduling."""
+    m = (max_shift - base_shift) / (max_seq_len - base_seq_len)
+    b = base_shift - m * base_seq_len
+    mu = image_seq_len * m + b
+    return mu
+
+
+def predict_noise_zimage(
+    transformer,
+    scheduler: SchedulerMixin,
+    timestep: torch.Tensor,  # normalized timestep (1000 - t) / 1000
+    latents: torch.FloatTensor,
+    prompt_embeds_list: list[torch.FloatTensor],  # list of variable-length embeddings
+    guidance_scale: float = 0.0,
+) -> torch.FloatTensor:
+    """
+    Predict noise for Z-Image using flow matching.
+    
+    Args:
+        transformer: Z-Image transformer model
+        scheduler: FlowMatchEulerDiscreteScheduler
+        timestep: normalized timestep tensor
+        latents: input latents [B, C, H, W]
+        prompt_embeds_list: list of prompt embeddings for each batch item
+        guidance_scale: CFG scale (0 for no CFG)
+    
+    Returns:
+        noise prediction
+    """
+    dtype = latents.dtype
+    batch_size = latents.shape[0]
+    
+    do_cfg = guidance_scale > 0
+    
+    if do_cfg:
+        # For CFG, we need to double the batch
+        latent_model_input = latents.repeat(2, 1, 1, 1)
+        timestep_input = timestep.repeat(2)
+        # prompt_embeds should be [positive, negative] for each item
+        # Assuming prompt_embeds_list contains [pos_0, ..., pos_n, neg_0, ..., neg_n]
+    else:
+        latent_model_input = latents
+        timestep_input = timestep
+    
+    # Z-Image expects latents with extra dim: [B, C, 1, H, W] -> list of [C, 1, H, W]
+    latent_model_input = latent_model_input.unsqueeze(2)
+    latent_model_input_list = list(latent_model_input.unbind(dim=0))
+    
+    # Forward pass through transformer
+    model_out_list = transformer(
+        latent_model_input_list,
+        timestep_input,
+        prompt_embeds_list,
+    )[0]
+    
+    if do_cfg:
+        # Perform CFG
+        pos_out = model_out_list[:batch_size]
+        neg_out = model_out_list[batch_size:]
+        
+        noise_pred = []
+        for j in range(batch_size):
+            pos = pos_out[j].float()
+            neg = neg_out[j].float()
+            pred = pos + guidance_scale * (pos - neg)
+            noise_pred.append(pred)
+        
+        noise_pred = torch.stack(noise_pred, dim=0)
+    else:
+        noise_pred = torch.stack([t.float() for t in model_out_list], dim=0)
+    
+    noise_pred = noise_pred.squeeze(2)
+    # Z-Image requires negating the noise prediction
+    noise_pred = -noise_pred
+    
+    return noise_pred
+
+
+@torch.no_grad()
+def diffusion_zimage(
+    transformer,
+    scheduler: SchedulerMixin,
+    latents: torch.FloatTensor,
+    prompt_embeds_list: list[torch.FloatTensor],
+    negative_prompt_embeds_list: list[torch.FloatTensor] = None,
+    num_inference_steps: int = 30,
+    guidance_scale: float = 0.0,
+    start_step: int = 0,
+    total_steps: int = None,
+) -> torch.FloatTensor:
+    """
+    Run Z-Image diffusion process using flow matching.
+    
+    Args:
+        transformer: Z-Image transformer model
+        scheduler: FlowMatchEulerDiscreteScheduler
+        latents: initial noise latents
+        prompt_embeds_list: list of prompt embeddings
+        negative_prompt_embeds_list: list of negative prompt embeddings (for CFG)
+        num_inference_steps: number of denoising steps
+        guidance_scale: CFG scale
+        start_step: starting step index
+        total_steps: ending step index
+    
+    Returns:
+        denoised latents
+    """
+    batch_size = latents.shape[0]
+    device = latents.device
+    dtype = latents.dtype
+    
+    if total_steps is None:
+        total_steps = num_inference_steps
+    
+    # Calculate mu for timestep scheduling
+    image_seq_len = (latents.shape[2] // 2) * (latents.shape[3] // 2)
+    mu = calculate_shift_zimage(
+        image_seq_len,
+        scheduler.config.get("base_image_seq_len", 256),
+        scheduler.config.get("max_image_seq_len", 4096),
+        scheduler.config.get("base_shift", 0.5),
+        scheduler.config.get("max_shift", 1.15),
+    )
+    
+    # Set timesteps
+    scheduler.sigma_min = 0.0
+    scheduler.set_timesteps(num_inference_steps, device=device, mu=mu)
+    timesteps = scheduler.timesteps
+    
+    do_cfg = guidance_scale > 0 and negative_prompt_embeds_list is not None
+    
+    for i, t in enumerate(timesteps[start_step:total_steps]):
+        # Normalized timestep for Z-Image: (1000 - t) / 1000
+        timestep = t.expand(batch_size)
+        timestep_normalized = (1000 - timestep) / 1000
+        
+        if do_cfg:
+            combined_embeds = prompt_embeds_list + negative_prompt_embeds_list
+        else:
+            combined_embeds = prompt_embeds_list
+        
+        noise_pred = predict_noise_zimage(
+            transformer,
+            scheduler,
+            timestep_normalized,
+            latents if latents.dtype == dtype else latents.to(dtype),
+            combined_embeds,
+            guidance_scale=guidance_scale if do_cfg else 0.0,
+        )
+        
+        # Scheduler step
+        latents = scheduler.step(noise_pred.to(torch.float32), t, latents, return_dict=False)[0]
+    
+    return latents
+
+
+def concat_embeddings_zimage(
+    unconditional_embeds: torch.FloatTensor,
+    conditional_embeds: torch.FloatTensor,
+    n_imgs: int,
+) -> list[torch.FloatTensor]:
+    """
+    Concatenate unconditional and conditional embeddings for Z-Image CFG.
+    Returns a list suitable for Z-Image transformer input.
+    """
+    # For Z-Image, we return a list: [cond_0, ..., cond_n, uncond_0, ..., uncond_n]
+    result = []
+    for _ in range(n_imgs):
+        result.append(conditional_embeds)
+    for _ in range(n_imgs):
+        result.append(unconditional_embeds)
+    return result

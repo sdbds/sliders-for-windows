@@ -24,8 +24,18 @@ class PromptEmbedsXL:
         self.pooled_embeds = args[1]
 
 
+class PromptEmbedsZImage:
+    """Z-Image uses single text encoder with variable length embeddings."""
+    prompt_embeds: torch.FloatTensor  # [1, seq_len, hidden_dim]
+    prompt_attention_mask: torch.BoolTensor  # [1, max_seq_len]
+
+    def __init__(self, prompt_embeds: torch.FloatTensor, prompt_attention_mask: torch.BoolTensor) -> None:
+        self.prompt_embeds = prompt_embeds
+        self.prompt_attention_mask = prompt_attention_mask
+
+
 # SDv1.x, SDv2.x は FloatTensor、XL は PromptEmbedsXL
-PROMPT_EMBEDDING = Union[torch.FloatTensor, PromptEmbedsXL]
+PROMPT_EMBEDDING = Union[torch.FloatTensor, PromptEmbedsXL, PromptEmbedsZImage]
 
 
 class PromptEmbedsCache:  # 使いまわしたいので

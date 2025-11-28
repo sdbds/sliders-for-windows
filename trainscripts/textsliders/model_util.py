@@ -19,6 +19,7 @@ from diffusers.schedulers import (
     DDPMScheduler,
     LMSDiscreteScheduler,
     EulerAncestralDiscreteScheduler,
+    FlowMatchEulerDiscreteScheduler,
 )
 
 

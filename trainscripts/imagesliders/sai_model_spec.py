@@ -49,6 +49,7 @@ ARCH_SD_V1 = "stable-diffusion-v1"
 ARCH_SD_V2_512 = "stable-diffusion-v2-512"
 ARCH_SD_V2_768_V = "stable-diffusion-v2-768-v"
 ARCH_SD_XL_V1_BASE = "stable-diffusion-xl-v1-base"
+ARCH_ZIMAGE = "z-image"
 
 ADAPTER_LORA = "sliders"
 
@@ -73,11 +74,16 @@ def build_metadata(
     merged_from: Optional[str] = None,
     timesteps: Optional[Tuple[int, int]] = None,
     clip_skip: Optional[int] = None,
+    zimage: Optional[str] = None,
 ):
     metadata = {}
     metadata.update(BASE_METADATA)
 
-    if sdxl:
+    if zimage is not None:
+        metadata["ss_base_model_version"] = f"zimage_{zimage}"
+        del metadata["ss_v2"]
+        arch = ARCH_ZIMAGE
+    elif sdxl:
         metadata["ss_base_model_version"] = "sdxl_base_v1-0"
         del metadata["ss_v2"]
         arch = ARCH_SD_XL_V1_BASE
@@ -150,7 +156,7 @@ def build_metadata(
             reso = (reso[0], reso[0])
     else:
         # resolution is defined in dataset, so use default
-        if sdxl:
+        if sdxl or zimage is not None:
             reso = 1024
         elif v2 and v_parameterization:
             reso = 768
@@ -161,7 +167,9 @@ def build_metadata(
 
     metadata["modelspec.resolution"] = f"{reso[0]}x{reso[1]}"
 
-    if v_parameterization:
+    if zimage is not None:
+        del metadata["modelspec.prediction_type"]  # Z-Image uses flow matching, not epsilon/v prediction
+    elif v_parameterization:
         metadata["modelspec.prediction_type"] = PRED_TYPE_V
     else:
         metadata["modelspec.prediction_type"] = PRED_TYPE_EPSILON

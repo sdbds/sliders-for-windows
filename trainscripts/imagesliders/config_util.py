@@ -17,6 +17,7 @@ class PretrainedModelConfig(BaseModel):
     v_pred: bool = False
 
     clip_skip: Optional[int] = None
+    zimage: Optional[str] = None  # "turbo" or other variants
 
 
 class NetworkConfig(BaseModel):
@@ -38,6 +39,7 @@ class TrainConfig(BaseModel):
     lr_scheduler: str = "constant"
 
     max_denoising_steps: int = 50
+    max_sequence_length: int = 2048  # For Z-Image text encoder
 
 
 class SaveConfig(BaseModel):
@@ -53,8 +55,14 @@ class LoggingConfig(BaseModel):
     verbose: bool = False
 
 
+COMPILE_MODES = Literal["default", "reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs"]
+
+
 class OtherConfig(BaseModel):
     use_xformers: bool = False
+    gradient_checkpointing: bool = False
+    torch_compile: bool = False
+    torch_compile_mode: COMPILE_MODES = "default"
 
 
 class RootConfig(BaseModel):
