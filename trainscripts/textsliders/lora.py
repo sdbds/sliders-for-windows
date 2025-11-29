@@ -20,6 +20,12 @@ UNET_TARGET_REPLACE_MODULE_TRANSFORMER = [
     "SingleStreamBlock",
     "ZImageTransformerBlock",
 ]
+
+# Z-Image 顶层模块，直接处理其中的 Linear 层
+ZIMAGE_TOP_LEVEL_MODULES = [
+    "final_layer",
+    "all_final_layer",  # ComfyUI 格式
+]
 UNET_TARGET_REPLACE_MODULE_CONV = [
     "ResnetBlock2D",
     "Downsample2D",
@@ -239,6 +245,23 @@ class LoRANetwork(nn.Module):
                         if lora_name not in names:
                             loras.append(lora)
                             names.append(lora_name)
+# Z-Image: 处理顶层模块如 final_layer
+        for name, module in root_module.named_modules():
+            # 检查是否是顶层模块
+            is_top_level = any(top in name for top in ZIMAGE_TOP_LEVEL_MODULES)
+            if not is_top_level:
+                continue
+            # 只处理 Linear 层
+            if module.__class__.__name__ in ["Linear", "LoRACompatibleLinear"]:
+                lora_name = prefix + "." + name
+                lora_name = lora_name.replace(".", "_")
+                if lora_name not in names:
+                    lora = self.module(
+                        lora_name, module, current_multiplier, rank, self.alpha
+                    )
+                    loras.append(lora)
+                    names.append(lora_name)
+                    
 #         print(f'@@@@@@@@@@@@@@@@@@@@@@@@@@@@ \n {names}')
         return loras
 

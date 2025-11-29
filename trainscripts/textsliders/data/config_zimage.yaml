@@ -1,0 +1,42 @@
+prompts_file: "trainscripts/textsliders/data/prompts_zimage.yaml"
+
+pretrained_model:
+  name_or_path: "./models/diffusion_models/z_image_turbo_bf16.safetensors"  # or local path
+  v2: false
+  v_pred: false
+  zimage: "turbo"  # "turbo" or other variants
+  text_encoder_path: "./models/text_encoders/qwen_3_4b.safetensors"  # Optional: separate text_encoder path (diffusers dir or HF repo)
+  vae_path: "./models/vae/ae.safetensors"  # Optional: separate vae path (diffusers dir or HF repo)
+
+network:
+  type: "c3lier"  # "lierla" or "c3lier" (c3lier includes conv layers)
+  rank: 64
+  alpha: 1.0
+  training_method: "full"  # "full", "noxattn", "xattn", etc.
+
+train:
+  precision: "bfloat16"  # Z-Image requires bfloat16
+  noise_scheduler: "ddim"  # Note: Z-Image uses FlowMatch internally
+  iterations: 2000
+  lr: 2e-4
+  optimizer: "adamw"
+  optimizer_args: ""
+  lr_scheduler: "constant"  # "constant", "cosine", "cosine_with_restarts", "step", "linear"
+  max_denoising_steps: 20  # Z-Image Turbo default
+  max_sequence_length: 2048  # Z-Image uses Qwen LLM, can increase to 1024+ for longer prompts
+
+save:
+  name: "zimage_slider"
+  path: "./output"
+  per_steps: 200
+  precision: "bfloat16"
+
+logging:
+  use_wandb: true
+  verbose: true
+
+other:
+  use_xformers: true
+  gradient_checkpointing: false  # Enable if running out of VRAM
+  torch_compile: false
+  torch_compile_mode: "max-autotune-no-cudagraphs"  # 可选: default, reduce-overhead, max-autotune, max-autotune-no-cudagraphs

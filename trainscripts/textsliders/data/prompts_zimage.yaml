@@ -1,0 +1,60 @@
+# Example: Age slider
+# - target: "女人" # what word for erasing the positive concept from
+#   positive: "极其详细的渐变眼睛,极其详细的头发,极其详细的面部和皮肤,完美的解剖结构,眼睛中厚厚的高光,极其详细的闪亮虹膜,完美的阴影,完美的叠加,完美的高光,闪闪发光的眼睛,杰作,最佳质量,复杂细节 高精细, 8K, 高分辨率, 超逼真" # concept to erase
+#   unconditional: "最差质量,低质量,丑陋,糟糕的艺术,糟糕的解剖结构,变异,突变,多余的四肢,多余的腿,多余的手臂,画得很差的手,画得很差的脚,画得很差的脸" # word to take the difference from the positive concept
+#   neutral: "女人" # starting point for conditioning the target
+#   action: "enhance" # erase or enhance
+#   guidance_scale: 5
+#   resolution: 512
+#   dynamic_resolution: false
+#   batch_size: 1
+
+# - target: "男人" # what word for erasing the positive concept from
+#   positive: "极其详细的渐变眼睛,极其详细的头发,极其详细的面部和皮肤,完美的解剖结构,眼睛中厚厚的高光,极其详细的闪亮虹膜,完美的阴影,完美的叠加,完美的高光,闪闪发光的眼睛,杰作,最佳质量,高精细, 8K, 高分辨率, 超逼真" # concept to erase
+#   unconditional: "最差质量,低质量,丑陋,糟糕的艺术,糟糕的解剖结构,变异,突变,多余的四肢,多余的腿,多余的手臂,画得很差的手,画得很差的脚,画得很差的脸" # word to take the difference from the positive concept
+#   neutral: "男人" # starting point for conditioning the target
+#   action: "enhance" # erase or enhance
+#   guidance_scale: 5
+#   resolution: 512
+#   dynamic_resolution: false
+#   batch_size: 1
+
+- target: "girl" # what word for erasing the positive concept from
+  positive: "masterpiece, Best Quality, Intricate Details, extremely detailed gradient eyes,extremely detailed hair, extremely detailed hair face and skin, perfect anatomy, thick highlights in eyes,extremely detailed glistening iris, perfect shading, perfect overlay, perfect highlights, color tress, colorful reflected light in eyes,glitter eyes,beautiful and aesthetic, shiny,sparkling eyes" # concept to erase
+  unconditional: "worst quality, low quality, ugly,bad art, bad anatomy,mutation, mutated, extra limbs, extra legs, extra arms,poorly drawn hands, poorly drawn feet, poorly drawn face" # word to take the difference from the positive concept
+  neutral: "girl" # starting point for conditioning the target
+  action: "enhance" # erase or enhance
+  guidance_scale: 7
+  resolution: 1024
+  dynamic_resolution: false
+  batch_size: 1
+
+- target: "girl,full body" # what word for erasing the positive concept from
+  positive: "masterpiece, Best Quality, Intricate Details, extremely detailed gradient eyes,extremely detailed hair, extremely detailed hair face and skin, perfect anatomy, thick highlights in eyes,extremely detailed glistening iris, perfect shading, perfect overlay, perfect highlights, color tress, colorful reflected light in eyes,glitter eyes,beautiful and aesthetic, shiny,sparkling eyes" # concept to erase
+  unconditional: "worst quality, low quality, ugly,bad art, bad anatomy,mutation, mutated, extra limbs, extra legs, extra arms,poorly drawn hands, poorly drawn feet, poorly drawn face" # word to take the difference from the positive concept
+  neutral: "girl,full body" # starting point for conditioning the target
+  action: "enhance" # erase or enhance
+  guidance_scale: 7
+  resolution: 1024
+  dynamic_resolution: false
+  batch_size: 1
+
+- target: "boy" # what word for erasing the positive concept from
+  positive: "masterpiece, Best Quality, Intricate Details, extremely detailed gradient eyes,extremely detailed hair, extremely detailed hair face and skin, perfect anatomy, thick highlights in eyes,extremely detailed glistening iris, perfect shading, perfect overlay, perfect highlights, color tress, colorful reflected light in eyes,glitter eyes,beautiful and aesthetic, shiny,sparkling eyes" # concept to erase
+  unconditional: "worst quality, low quality, ugly,bad art, bad anatomy,mutation, mutated, extra limbs, extra legs, extra arms,poorly drawn hands, poorly drawn feet, poorly drawn face" # word to take the difference from the positive concept
+  neutral: "boy" # starting point for conditioning the target
+  action: "enhance" # erase or enhance
+  guidance_scale: 7
+  resolution: 1024
+  dynamic_resolution: false
+  batch_size: 1
+
+- target: "boy,full body" # what word for erasing the positive concept from
+  positive: "masterpiece, Best Quality, Intricate Details, extremely detailed gradient eyes,extremely detailed hair, extremely detailed hair face and skin, perfect anatomy, thick highlights in eyes,extremely detailed glistening iris, perfect shading, perfect overlay, perfect highlights, color tress, colorful reflected light in eyes,glitter eyes,beautiful and aesthetic, shiny,sparkling eyes" # concept to erase
+  unconditional: "worst quality, low quality, ugly,bad art, bad anatomy,mutation, mutated, extra limbs, extra legs, extra arms,poorly drawn hands, poorly drawn feet, poorly drawn face" # word to take the difference from the positive concept
+  neutral: "boy,full body" # starting point for conditioning the target
+  action: "enhance" # erase or enhance
+  guidance_scale: 7
+  resolution: 1024
+  dynamic_resolution: false
+  batch_size: 1

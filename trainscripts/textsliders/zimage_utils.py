@@ -29,42 +29,11 @@ def is_single_file(path: str) -> bool:
 def is_diffusers_directory(path: str) -> bool:
     """
     Check if path is a diffusers format model directory.
-    Diffusers format has subfolders like transformer/, vae/, text_encoder/.
+    Diffusers format has model_index.json in the root directory.
     """
     if not os.path.isdir(path):
         return False
-    
-    # Check for typical diffusers subfolders
-    subfolders = ["transformer", "vae", "text_encoder"]
-    for subfolder in subfolders:
-        subfolder_path = os.path.join(path, subfolder)
-        if os.path.isdir(subfolder_path):
-            # Check if subfolder contains model files
-            for f in os.listdir(subfolder_path):
-                if f.endswith(".safetensors") or f.endswith(".bin"):
-                    return True
-    return False
-
-
-def list_safetensors_in_directory(directory: str) -> list:
-    """
-    List all safetensors files in a directory (non-recursive).
-    
-    Args:
-        directory: Path to the directory
-        
-    Returns:
-        List of full paths to safetensors files
-    """
-    if not os.path.isdir(directory):
-        return []
-    
-    safetensors_files = []
-    for f in os.listdir(directory):
-        if f.endswith(".safetensors"):
-            safetensors_files.append(os.path.join(directory, f))
-    
-    return sorted(safetensors_files)
+    return os.path.isfile(os.path.join(path, "model_index.json"))
 
 
 def get_model_type(path: str) -> str:
@@ -74,20 +43,13 @@ def get_model_type(path: str) -> str:
     Returns:
         "single_file" - Single safetensors/ckpt file
         "diffusers" - Diffusers format directory with subfolders
-        "directory" - Directory containing safetensors files (not diffusers format)
-        "unknown" - Unknown format
+        "unknown" - Unknown format (will try as HuggingFace model ID)
     """
     if is_single_file(path):
         return "single_file"
     
-    if os.path.isdir(path):
-        if is_diffusers_directory(path):
-            return "diffusers"
-        
-        # Check if directory contains safetensors files directly
-        safetensors_files = list_safetensors_in_directory(path)
-        if safetensors_files:
-            return "directory"
+    if os.path.isdir(path) and is_diffusers_directory(path):
+        return "diffusers"
     
     return "unknown"
 
@@ -105,11 +67,6 @@ def print_directory_info(path: str) -> None:
             if os.path.isdir(subfolder_path):
                 files = os.listdir(subfolder_path)
                 print(f"  {subfolder}/: {files}")
-    elif model_type == "directory":
-        safetensors_files = list_safetensors_in_directory(path)
-        print(f"Safetensors files found: {len(safetensors_files)}")
-        for f in safetensors_files:
-            print(f"  - {os.path.basename(f)}")
     elif model_type == "single_file":
         print(f"Single file: {os.path.basename(path)}")
 
@@ -218,24 +175,47 @@ def find_safetensors_in_subfolder(base_path: str, subfolder: str) -> Optional[st
     return None
 
 
+# Default Z-Image Transformer config (no HuggingFace download needed)
+DEFAULT_ZIMAGE_TRANSFORMER_CONFIG = {
+    "_class_name": "ZImageTransformer2DModel",
+    "_diffusers_version": "0.36.0.dev0",
+    "all_f_patch_size": [1],
+    "all_patch_size": [2],
+    "axes_dims": [32, 48, 48],
+    "axes_lens": [1536, 512, 512],
+    "cap_feat_dim": 2560,
+    "dim": 3840,
+    "in_channels": 16,
+    "n_heads": 30,
+    "n_kv_heads": 30,
+    "n_layers": 30,
+    "n_refiner_layers": 2,
+    "norm_eps": 1e-05,
+    "qk_norm": True,
+    "rope_theta": 256.0,
+    "t_scale": 1000.0,
+}
+
+
 def load_transformer_from_local_safetensors(
     safetensors_path: str,
     dtype: torch.dtype = torch.bfloat16,
-    config_path: Optional[str] = None,
+    device: str = "cuda",
 ) -> ZImageTransformer2DModel:
     """
-    Load transformer directly from a local safetensors file.
-    Downloads only config (not weights) from HuggingFace if no local config.
+    Load transformer directly from a local safetensors file to GPU.
+    Uses hardcoded config, no HuggingFace download needed.
     
     Args:
         safetensors_path: Path to the .safetensors file
         dtype: Model dtype
-        config_path: Optional path to config.json, if None downloads config only
+        device: Target device (default: cuda)
     """
+    import json
     print(f"Loading transformer from: {safetensors_path}")
     
-    # Load state dict from safetensors
-    state_dict = load_safetensors(safetensors_path)
+    # Load state dict directly to GPU
+    state_dict = load_safetensors(safetensors_path, device=device)
     
     # Try to load config from the same directory first
     config_dir = os.path.dirname(safetensors_path)
@@ -244,45 +224,70 @@ def load_transformer_from_local_safetensors(
     if os.path.exists(config_file):
         # Use local config
         print("Using local config.json")
-        transformer = ZImageTransformer2DModel.from_pretrained(
-            config_dir,
-            torch_dtype=dtype,
-            trust_remote_code=True,
-            low_cpu_mem_usage=False,
-        )
-        # Replace weights with local safetensors
-        transformer.load_state_dict(state_dict, strict=False)
+        with open(config_file, 'r') as f:
+            config = json.load(f)
     else:
-        # Download only config from HuggingFace (not weights)
-        print("Downloading config only from HuggingFace...")
-        # Load config only
-        config = ZImageTransformer2DModel.load_config(
-            DEFAULT_ZIMAGE_BASE_MODEL,
-            subfolder="transformer",
-            cache_dir=DIFFUSERS_CACHE_DIR,
-        )
-        # Create model from config
+        # Use hardcoded default config
+        print("Using default Z-Image transformer config")
+        config = DEFAULT_ZIMAGE_TRANSFORMER_CONFIG
+    
+    # Create model directly on GPU with correct dtype
+    with torch.device(device):
         transformer = ZImageTransformer2DModel.from_config(config)
         transformer = transformer.to(dtype)
-        # Load local weights
-        transformer.load_state_dict(state_dict, strict=False)
+    
+    # Load weights (already on GPU)
+    transformer.load_state_dict(state_dict, strict=False)
     
     return transformer
+
+
+# Default Z-Image Text Encoder config (Qwen3-4B, no HuggingFace download needed)
+DEFAULT_ZIMAGE_TEXT_ENCODER_CONFIG = {
+    "architectures": ["Qwen3ForCausalLM"],
+    "attention_bias": False,
+    "attention_dropout": 0.0,
+    "bos_token_id": 151643,
+    "eos_token_id": 151645,
+    "head_dim": 128,
+    "hidden_act": "silu",
+    "hidden_size": 2560,
+    "initializer_range": 0.02,
+    "intermediate_size": 9728,
+    "max_position_embeddings": 40960,
+    "max_window_layers": 36,
+    "model_type": "qwen3",
+    "num_attention_heads": 32,
+    "num_hidden_layers": 36,
+    "num_key_value_heads": 8,
+    "rms_norm_eps": 1e-06,
+    "rope_scaling": None,
+    "rope_theta": 1000000,
+    "sliding_window": None,
+    "tie_word_embeddings": True,
+    "torch_dtype": "bfloat16",
+    "transformers_version": "4.51.0",
+    "use_cache": True,
+    "use_sliding_window": False,
+    "vocab_size": 151936,
+}
 
 
 def load_text_encoder_from_local_safetensors(
     safetensors_path: str,
     dtype: torch.dtype = torch.bfloat16,
+    device: str = "cuda",
 ) -> PreTrainedModel:
     """
-    Load text encoder directly from a local safetensors file.
-    Downloads only config (not weights) from HuggingFace if no local config.
+    Load text encoder directly from a local safetensors file to GPU.
+    Uses hardcoded config, no HuggingFace download needed.
     """
     from transformers import AutoConfig
+    import json
     print(f"Loading text encoder from: {safetensors_path}")
     
-    # Load state dict from local safetensors
-    state_dict = load_safetensors(safetensors_path)
+    # Load state dict directly to GPU
+    state_dict = load_safetensors(safetensors_path, device=device)
     
     # Try to load config from local directory first
     config_dir = os.path.dirname(safetensors_path)
@@ -293,23 +298,55 @@ def load_text_encoder_from_local_safetensors(
         print("Using local config.json")
         config = AutoConfig.from_pretrained(config_dir, trust_remote_code=True)
     else:
-        # Download only config from HuggingFace (not weights)
-        print("Downloading config only from HuggingFace...")
-        config = AutoConfig.from_pretrained(
-            DEFAULT_ZIMAGE_BASE_MODEL,
-            subfolder="text_encoder",
-            cache_dir=DIFFUSERS_CACHE_DIR,
-            trust_remote_code=True,
-        )
+        # Use hardcoded default config
+        print("Using default Z-Image text encoder config (Qwen3-4B)")
+        # Remove model_type from kwargs since it's the first positional arg
+        config_kwargs = {k: v for k, v in DEFAULT_ZIMAGE_TEXT_ENCODER_CONFIG.items() if k != "model_type"}
+        config = AutoConfig.for_model("qwen3", **config_kwargs)
     
-    # Create model from config (no weight download)
-    text_encoder = AutoModel.from_config(config, trust_remote_code=True)
-    text_encoder = text_encoder.to(dtype)
+    # Create model directly on GPU with correct dtype
+    with torch.device(device):
+        text_encoder = AutoModel.from_config(config, trust_remote_code=True, torch_dtype=dtype)
     
-    # Load local weights
+    # Load weights (already on GPU)
     text_encoder.load_state_dict(state_dict, strict=False)
     
     return text_encoder
+
+
+# Default Z-Image VAE config (no HuggingFace download needed)
+DEFAULT_ZIMAGE_VAE_CONFIG = {
+    "_class_name": "AutoencoderKL",
+    "_diffusers_version": "0.36.0.dev0",
+    "act_fn": "silu",
+    "block_out_channels": [128, 256, 512, 512],
+    "down_block_types": [
+        "DownEncoderBlock2D",
+        "DownEncoderBlock2D",
+        "DownEncoderBlock2D",
+        "DownEncoderBlock2D",
+    ],
+    "force_upcast": True,
+    "in_channels": 3,
+    "latent_channels": 16,
+    "latents_mean": None,
+    "latents_std": None,
+    "layers_per_block": 2,
+    "mid_block_add_attention": True,
+    "norm_num_groups": 32,
+    "out_channels": 3,
+    "sample_size": 1024,
+    "scaling_factor": 0.3611,
+    "shift_factor": 0.1159,
+    "up_block_types": [
+        "UpDecoderBlock2D",
+        "UpDecoderBlock2D",
+        "UpDecoderBlock2D",
+        "UpDecoderBlock2D",
+    ],
+    "use_post_quant_conv": False,
+    "use_quant_conv": False,
+}
 
 
 def load_vae_from_local_safetensors(
@@ -318,7 +355,7 @@ def load_vae_from_local_safetensors(
 ) -> AutoencoderKL:
     """
     Load VAE directly from a local safetensors file.
-    Downloads only config (not weights) from HuggingFace if no local config.
+    Uses hardcoded config, no HuggingFace download needed.
     """
     import json
     print(f"Loading VAE from: {safetensors_path}")
@@ -332,18 +369,13 @@ def load_vae_from_local_safetensors(
         print("Using local config.json")
         with open(config_file, 'r') as f:
             config_dict = json.load(f)
-        vae = AutoencoderKL.from_config(config_dict)
-        vae = vae.to(dtype)
     else:
-        # Download only config from HuggingFace (not weights)
-        print("Downloading config only from HuggingFace...")
-        config = AutoencoderKL.load_config(
-            DEFAULT_ZIMAGE_BASE_MODEL,
-            subfolder="vae",
-            cache_dir=DIFFUSERS_CACHE_DIR,
-        )
-        vae = AutoencoderKL.from_config(config)
-        vae = vae.to(dtype)
+        # Use hardcoded default config
+        print("Using default Z-Image VAE config")
+        config_dict = DEFAULT_ZIMAGE_VAE_CONFIG
+    
+    vae = AutoencoderKL.from_config(config_dict)
+    vae = vae.to(dtype)
     
     # Load weights
     vae.load_state_dict(state_dict, strict=False)
@@ -354,23 +386,42 @@ def load_vae_from_local_safetensors(
 def load_tokenizer_and_text_encoder(
     model_path: str,
     dtype: torch.dtype = torch.bfloat16,
+    text_encoder_path: Optional[str] = None,
 ) -> Tuple[AutoTokenizer, PreTrainedModel]:
     """
     Load only tokenizer and text encoder for prompt encoding.
     Used for staged loading to save VRAM.
-    """
-    model_type = get_model_type(model_path)
     
-    if model_type == "diffusers" and os.path.isdir(model_path):
+    Args:
+        model_path: Main model path (diffusers dir, single file, or HF repo)
+        dtype: Model dtype
+        text_encoder_path: Optional separate path for text_encoder (diffusers dir, single file, or HF repo)
+    """
+    # Use separate text_encoder_path if provided
+    te_path = text_encoder_path or model_path
+    te_model_type = get_model_type(te_path)
+    
+    if te_model_type == "single_file":
+        # Single safetensors file for text encoder
+        print(f"Loading text encoder from single file: {te_path}")
+        text_encoder = load_text_encoder_from_local_safetensors(te_path, dtype)
+        # Tokenizer must come from default base model
+        tokenizer = load_tokenizer(DEFAULT_ZIMAGE_BASE_MODEL)
+    elif te_model_type == "diffusers" and os.path.isdir(te_path):
         # Check if local safetensors
-        text_encoder_file = find_safetensors_in_subfolder(model_path, "text_encoder")
+        text_encoder_file = find_safetensors_in_subfolder(te_path, "text_encoder")
         if text_encoder_file:
             print(f"Loading text encoder from local safetensors: {text_encoder_file}")
             text_encoder = load_text_encoder_from_local_safetensors(text_encoder_file, dtype)
-            tokenizer = load_tokenizer(DEFAULT_ZIMAGE_BASE_MODEL)
+            tokenizer = load_tokenizer(te_path)
         else:
-            tokenizer = load_tokenizer(model_path)
-            text_encoder = load_text_encoder(model_path, dtype)
+            tokenizer = load_tokenizer(te_path)
+            text_encoder = load_text_encoder(te_path, dtype)
+    elif te_path != model_path:
+        # Separate path provided, treat as HF repo
+        print(f"Loading text encoder from HF repo: {te_path}")
+        tokenizer = load_tokenizer(te_path)
+        text_encoder = load_text_encoder(te_path, dtype)
     else:
         # Use default base model
         tokenizer = load_tokenizer(DEFAULT_ZIMAGE_BASE_MODEL)
@@ -400,7 +451,9 @@ def load_transformer_and_scheduler(
             transformer = load_transformer(model_path, dtype)
             scheduler = load_scheduler(model_path)
     elif model_type == "single_file":
-        transformer = load_transformer_from_single_file(model_path, dtype)
+        # ZImageTransformer2DModel doesn't support from_single_file, use local loader
+        print(f"Loading transformer from single file: {model_path}")
+        transformer = load_transformer_from_local_safetensors(model_path, dtype)
         scheduler = create_default_scheduler()
     else:
         transformer = load_transformer(DEFAULT_ZIMAGE_BASE_MODEL, dtype)
@@ -546,14 +599,6 @@ def load_model(
         else:
             # Use diffusers from_pretrained (for HuggingFace Hub)
             return load_diffusers_model(model_path, dtype)
-    elif model_type == "directory":
-        # Directory contains safetensors files directly - use the first one
-        safetensors_files = list_safetensors_in_directory(model_path)
-        if safetensors_files:
-            print(f"Using first safetensors file: {os.path.basename(safetensors_files[0])}")
-            return load_single_file_model(safetensors_files[0], dtype, base_model_path)
-        else:
-            raise ValueError(f"No safetensors files found in directory: {model_path}")
     else:
         # Try as HuggingFace model ID
         print(f"Trying to load as HuggingFace model: {model_path}")

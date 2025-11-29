@@ -268,7 +268,7 @@ wandb==0.12.21
     # via -r requirements.txt
 wcwidth==0.2.13
     # via prompt-toolkit
-xformers==0.0.34.dev1100
+xformers @ git+https://github.com/facebookresearch/xformers.git@0eb7c432181e27de164f7b48c100a636dfc5074b
     # via -r requirements.txt
 zipp==3.20.2
     # via importlib-metadata

@@ -20,6 +20,10 @@ class PretrainedModelConfig(BaseModel):
     hydit: Optional[str] = None  # "1.1" or "1.2"
     flux: Optional[str] = None   # "dev" or "schnell"
     zimage: Optional[str] = None # "turbo" or other variants
+    
+    # Separate paths for text_encoder and vae (used when name_or_path is single file)
+    text_encoder_path: Optional[str] = None
+    vae_path: Optional[str] = None
 
 
 class NetworkConfig(BaseModel):
@@ -89,6 +93,9 @@ def parse_precision(precision: str) -> torch.dtype:
         return torch.float16
     elif precision == "bf16" or precision == "bfloat16":
         return torch.bfloat16
+    elif precision == "fp8" or precision == "float8":
+        # FP8 E4M3 format (requires PyTorch 2.1+ and CUDA 11.8+)
+        return torch.float8_e4m3fn
 
     raise ValueError(f"Invalid precision type: {precision}")
 
