@@ -395,7 +395,7 @@ def predict_noise_xl(
 
     # https://github.com/huggingface/diffusers/blob/7a91ea6c2b53f94da930a61ed571364022b21044/src/diffusers/pipelines/stable_diffusion_xl/pipeline_stable_diffusion_xl.py#L775
     noise_pred = rescale_noise_cfg(
-        noise_pred, noise_pred_text, guidance_rescale=guidance_rescale
+        guided_target, noise_pred_text, guidance_rescale=guidance_rescale
     )
 
     return guided_target

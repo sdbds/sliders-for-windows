@@ -2,6 +2,9 @@
 ###  [Project Website](https://sliders.baulab.info) | [Arxiv Preprint](https://arxiv.org/pdf/2311.12092.pdf) | [Trained Sliders](https://sliders.baulab.info/weights/xl_sliders/) | [Colab Demo](https://colab.research.google.com/github/rohitgandikota/sliders/blob/main/demo_concept_sliders.ipynb) | [Huggingface Demo](https://huggingface.co/spaces/baulab/ConceptSliders) <br>
 Official code implementation of "Concept Sliders: LoRA Adaptors for Precise Control in Diffusion Models", European Conference on Computer Vision (ECCV 2024).
 
+## 🎉 LATEST UPDATE: SliderSpace 🎉
+Experience the next evolution in concept sliders! **SliderSpace** automatically extracts hundreds of sliders from diffusion models' creative knowledge - no training required! Unlock unprecedented creativity with zero effort.  <br> 
+[Check out SliderSpace repo](https://github.com/baulab/sliderspace) 🚀🎨✨
 <div align='center'>
 <img src = 'images/main_figure.png'>
 </div>
@@ -96,6 +99,10 @@ For more inference time gradio demos please refer to Cameduru's repo [here](http
 
 ## Running with ControlNet Integration
 Our user community is amazing! Here is the resource that integrates ControlNet: https://github.com/rohitgandikota/sliders/issues/76#issuecomment-2099766893
+
+## NOTE ON LICENSE
+The code and methods behind our work have been released under MIT. However, the models that you use our methods with, might be on a different licenses. Please read the model's license (the model you are using) carefully for more details. 
+
 ## Citing our work
 The preprint can be cited as follows
 ```
